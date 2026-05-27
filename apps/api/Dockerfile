@@ -19,4 +19,5 @@ COPY apps/api/drizzle.config.ts ./apps/api/
 WORKDIR /app/apps/api
 
 EXPOSE 3001
-CMD ["bun", "run", "src/index.ts"]
+# Run migrations then start server (migrations are idempotent, safe to run on every deploy)
+CMD ["sh", "-c", "bun run src/db/migrate.ts && bun run src/index.ts"]
