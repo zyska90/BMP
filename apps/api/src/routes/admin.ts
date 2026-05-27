@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../db';
 import { registrations, users } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { requireAdmin } from '../middleware/jwt';
 import { sendEmail, getCredentialEmailTemplate } from '../services/email';
 

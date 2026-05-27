@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { signJWT, requireAuth, jwtAuth } from '../middleware/jwt';
 
 export const authRoutes = new Elysia({ prefix: '/auth' })

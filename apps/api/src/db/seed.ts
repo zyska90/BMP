@@ -1,6 +1,6 @@
 import { db, poolConnection } from './index';
 import { expertiseTags, industries, industryAdjacency, users } from './schema';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const initialIndustries = [
   { name: 'Teknologi Informasi (IT)', slug: 'it-software' },
