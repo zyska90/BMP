@@ -1,0 +1,19 @@
+{
+  "name": "bizlink-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "bun --filter bizlink-api dev",
+    "dev:web": "bun --filter bizlink-web dev",
+    "db:generate": "bun --filter bizlink-api db:generate",
+    "db:migrate": "bun --filter bizlink-api db:migrate",
+    "db:seed": "bun --filter bizlink-api db:seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
