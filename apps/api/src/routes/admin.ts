@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../db';
-import { registrations, users } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { registrations, users, expertiseTags } from '../db/schema';
+import { eq, desc, asc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { requireAdmin } from '../middleware/jwt';
 import { sendEmail, getCredentialEmailTemplate } from '../services/email';
@@ -156,4 +156,65 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
       success: true,
       message: 'Registration rejected successfully'
     };
+  })
+
+  // --- User Management ---
+
+  .get('/users', async () => {
+    return await db
+      .select({
+        id: users.id,
+        username: users.username,
+        email: users.email,
+        fullName: users.fullName,
+        title: users.title,
+        company: users.company,
+        role: users.role,
+        accountStatus: users.accountStatus,
+        profileCompleteness: users.profileCompleteness,
+        hasCompletedProfile: users.hasCompletedProfile,
+        createdAt: users.createdAt
+      })
+      .from(users)
+      .orderBy(desc(users.createdAt));
+  })
+
+  .patch('/users/:id/status', async ({ params: { id }, body, set }) => {
+    const { status } = body as { status: 'active' | 'inactive' };
+    if (!['active', 'inactive'].includes(status)) {
+      set.status = 400;
+      return { error: 'Status must be active or inactive' };
+    }
+    await db.update(users)
+      .set({ accountStatus: status })
+      .where(eq(users.id, parseInt(id)));
+    return { success: true, status };
+  })
+
+  // --- Tag Management ---
+
+  .get('/tags', async () => {
+    return await db.select().from(expertiseTags).orderBy(asc(expertiseTags.category), asc(expertiseTags.name));
+  })
+
+  .post('/tags', async ({ body, set }) => {
+    const { name, category } = body as any;
+    if (!name || !category) { set.status = 400; return { error: 'name and category required' }; }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const [result] = await db.insert(expertiseTags).values({ name, slug, category });
+    return { success: true, id: result.insertId, name, slug, category };
+  })
+
+  .patch('/tags/:id', async ({ params: { id }, body }) => {
+    const { name, category } = body as any;
+    const updates: any = {};
+    if (name) { updates.name = name; updates.slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+    if (category) updates.category = category;
+    await db.update(expertiseTags).set(updates).where(eq(expertiseTags.id, parseInt(id)));
+    return { success: true };
+  })
+
+  .delete('/tags/:id', async ({ params: { id } }) => {
+    await db.delete(expertiseTags).where(eq(expertiseTags.id, parseInt(id)));
+    return { success: true };
   });
