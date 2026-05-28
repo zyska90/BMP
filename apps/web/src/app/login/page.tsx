@@ -25,21 +25,24 @@ function LoginForm() {
     setError(null);
 
     try {
-      const { data, error: apiErr, status } = await api.auth.login.post({
-        username,
-        passcode
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, passcode })
       });
 
-      if (status !== 200 || !data || apiErr) {
-        setError((apiErr as any)?.value?.message || 'Login failed. Please verify credentials.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.message || 'Login failed. Please verify credentials.');
         setLoading(false);
         return;
       }
 
       setLoading(false);
-      if ((data as any).user.role === 'admin') {
+      if (data.user.role === 'admin') {
         router.push('/admin/dashboard');
-      } else if (!(data as any).user.hasCompletedProfile) {
+      } else if (!data.user.hasCompletedProfile) {
         router.push('/profile/setup');
       } else {
         router.push(from);
