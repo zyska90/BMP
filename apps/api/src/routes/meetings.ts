@@ -76,7 +76,7 @@ export const meetingRoutes = new Elysia({ prefix: '/meetings' })
   .get('/', async ({ user, set }) => {
     if (!user) { set.status = 401; return { error: 'Unauthorized' }; }
 
-    const sent = await db
+    const sentRaw = await db
       .select({
         id: meetingRequests.id,
         status: meetingRequests.status,
@@ -91,12 +91,12 @@ export const meetingRoutes = new Elysia({ prefix: '/meetings' })
         otherUserTitle: users.title,
         otherUserCompany: users.company,
         otherUserWhatsapp: users.whatsappNumber,
-        direction: db.$count(meetingRequests.id)  // placeholder, overridden below
       })
       .from(meetingRequests)
       .innerJoin(users, eq(meetingRequests.recipientId, users.id))
       .where(eq(meetingRequests.requesterId, user.userId))
       .orderBy(desc(meetingRequests.createdAt));
+    const sent = sentRaw;
 
     const received = await db
       .select({
