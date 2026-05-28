@@ -2,12 +2,14 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 import { api } from '../../lib/api';
 
 function LoginForm() {
   const [username, setUsername] = useState('');
   const [passcode, setPasscode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const router = useRouter();
@@ -97,14 +99,23 @@ function LoginForm() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
               Passcode
             </label>
-            <input
-              type="password"
-              placeholder="••••••"
-              value={passcode}
-              onChange={(e) => setPasscode(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-950 border border-gray-800 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 outline-none transition-all duration-150"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                className="w-full px-4 py-3 pr-11 bg-gray-950 border border-gray-800 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 outline-none transition-all duration-150"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button
