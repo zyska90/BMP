@@ -4,6 +4,7 @@ import { swagger } from '@elysiajs/swagger';
 import { authRoutes } from './routes/auth';
 import { adminRoutes } from './routes/admin';
 import { userRoutes, referenceRoutes } from './routes/users';
+import { matchRoutes } from './routes/matches';
 import { webhookRoutes } from './routes/webhooks';
 
 const port = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ const app = new Elysia()
   .use(authRoutes)
   .use(userRoutes)
   .use(referenceRoutes)
+  .use(matchRoutes)
   .use(adminRoutes)
   .use(webhookRoutes)
   
