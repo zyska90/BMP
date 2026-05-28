@@ -3,7 +3,7 @@ import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 import { authRoutes } from './routes/auth';
 import { adminRoutes } from './routes/admin';
-import { userRoutes } from './routes/users';
+import { userRoutes, referenceRoutes } from './routes/users';
 import { webhookRoutes } from './routes/webhooks';
 
 const port = process.env.PORT || 3001;
@@ -26,6 +26,7 @@ const app = new Elysia()
   // Group and Register all app routes
   .use(authRoutes)
   .use(userRoutes)
+  .use(referenceRoutes)
   .use(adminRoutes)
   .use(webhookRoutes)
   
