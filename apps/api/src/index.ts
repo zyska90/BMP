@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth';
 import { adminRoutes } from './routes/admin';
 import { userRoutes, referenceRoutes } from './routes/users';
 import { matchRoutes } from './routes/matches';
+import { meetingRoutes, notificationRoutes } from './routes/meetings';
 import { webhookRoutes } from './routes/webhooks';
 
 const port = process.env.PORT || 3001;
@@ -29,6 +30,8 @@ const app = new Elysia()
   .use(userRoutes)
   .use(referenceRoutes)
   .use(matchRoutes)
+  .use(meetingRoutes)
+  .use(notificationRoutes)
   .use(adminRoutes)
   .use(webhookRoutes)
   

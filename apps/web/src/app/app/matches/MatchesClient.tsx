@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Building2, RefreshCw, ChevronRight, X, Phone, Linkedin, Star } from 'lucide-react';
+import { MapPin, Building2, RefreshCw, ChevronRight, X, Phone, Linkedin, Star, Calendar, Send } from 'lucide-react';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'bg-success text-white' : score >= 70 ? 'bg-brand-500 text-white' : 'bg-warn text-white';
@@ -23,7 +23,84 @@ function ScoreBar({ label, value, max }: { label: string; value: number; max: nu
   );
 }
 
+function RequestMeetingForm({ match, onClose }: { match: any; onClose: () => void }) {
+  const [channel, setChannel] = useState<'WhatsApp' | 'Meet' | 'Zoom'>('WhatsApp');
+  const [proposedTime, setProposedTime] = useState('');
+  const [introNote, setIntroNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const send = async () => {
+    if (!proposedTime || !introNote) { setError('All fields are required'); return; }
+    if (introNote.length > 200) { setError('Intro note max 200 characters'); return; }
+    setSending(true); setError('');
+    const res = await fetch('/api/proxy/meetings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipientId: match.matchId, channel, proposedTime, introNote })
+    });
+    const data = await res.json();
+    if (!res.ok) { setError(data.error || 'Failed to send'); setSending(false); return; }
+    setSent(true);
+  };
+
+  if (sent) return (
+    <div className="px-6 py-8 text-center">
+      <div className="w-12 h-12 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
+        <Send size={20} className="text-success" />
+      </div>
+      <h3 className="font-display font-bold text-gray-900 mb-1">Request Sent!</h3>
+      <p className="text-sm text-gray-500 mb-4">Your meeting request has been sent to {match.fullName}.</p>
+      <button onClick={onClose} className="px-5 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg">Done</button>
+    </div>
+  );
+
+  return (
+    <div className="px-6 py-5 space-y-4">
+      <div>
+        <h3 className="font-display font-bold text-gray-900 mb-1">Request Meeting</h3>
+        <p className="text-sm text-gray-500">Send a meeting request to {match.fullName}</p>
+      </div>
+      {error && <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Channel</label>
+        <div className="flex gap-2">
+          {(['WhatsApp', 'Meet', 'Zoom'] as const).map(c => (
+            <button key={c} onClick={() => setChannel(c)}
+              className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-all ${
+                channel === c ? 'bg-brand-500 text-white border-brand-500' : 'border-gray-200 text-gray-600 hover:border-brand-500'
+              }`}>{c}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Proposed Date & Time</label>
+        <input type="datetime-local" value={proposedTime} onChange={e => setProposedTime(e.target.value)}
+          min={new Date().toISOString().slice(0, 16)}
+          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-brand-500 outline-none" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+          Intro Note <span className="text-gray-400 font-normal">({introNote.length}/200)</span>
+        </label>
+        <textarea value={introNote} onChange={e => setIntroNote(e.target.value)} rows={3} maxLength={200}
+          placeholder="Hi! I saw your profile and think we could explore a collaboration..."
+          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:border-brand-500 outline-none" />
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg">Cancel</button>
+        <button onClick={send} disabled={sending}
+          className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors">
+          {sending ? 'Sending...' : 'Send Request'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProfileModal({ match, onClose }: { match: any; onClose: () => void }) {
+  const [showRequest, setShowRequest] = useState(false);
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -94,7 +171,11 @@ function ProfileModal({ match, onClose }: { match: any; onClose: () => void }) {
           </div>
 
           {/* Contact */}
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-2 pt-1 flex-wrap">
+            <button onClick={() => setShowRequest(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-500 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              <Calendar size={14} /> Request Meeting
+            </button>
             {match.whatsappNumber && (
               <a href={`https://wa.me/${match.whatsappNumber.replace(/[^0-9]/g, '')}`}
                 target="_blank" rel="noopener noreferrer"
@@ -109,6 +190,7 @@ function ProfileModal({ match, onClose }: { match: any; onClose: () => void }) {
               </a>
             )}
           </div>
+          {showRequest && <div className="border-t border-gray-100 mt-4 pt-4"><RequestMeetingForm match={match} onClose={onClose} /></div>}
         </div>
       </div>
     </div>
