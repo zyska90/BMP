@@ -2,8 +2,5 @@
   "name": "bizlink-types",
   "version": "1.0.0",
   "private": true,
-  "main": "index.ts",
-  "dependencies": {
-    "bizlink-api": "workspace:*"
-  }
+  "main": "index.ts"
 }
