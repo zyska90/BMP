@@ -1,6 +1,7 @@
 [build]
-  command = "cd ../.. && bun install --frozen-lockfile && bun run --cwd apps/web build"
-  publish = ".next"
+  base = "apps/web"
+  command = "cd ../.. && bun install --frozen-lockfile && cd apps/web && bun run build"
+  publish = "apps/web/.next"
 
 [build.environment]
   NODE_VERSION = "20"
