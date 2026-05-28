@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '../../../lib/api';
 import { ArrowRight, User, Briefcase, Tag, CheckCircle } from 'lucide-react';
 
 const steps = [
@@ -17,10 +16,9 @@ export default function ProfileSetupPage() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    api.auth.me.get().then(({ data }) => {
+    fetch('/api/proxy/me').then(r => r.ok ? r.json() : null).then(data => {
       if (!data) { router.push('/login'); return; }
-      // Already completed — redirect to dashboard
-      if ((data as any).hasCompletedProfile) { router.push('/app/dashboard'); return; }
+      if (data.hasCompletedProfile) { router.push('/app/dashboard'); return; }
       setUser(data);
       setLoading(false);
     });
