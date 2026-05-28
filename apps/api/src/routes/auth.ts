@@ -35,11 +35,12 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     });
 
     // 4. Set Http-only Cookie
+    // SameSite=none required for cross-domain (Netlify frontend + Railway API)
     token.set({
       value: jwtToken,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60, // 7 days
       path: '/'
     });
@@ -63,7 +64,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
   })
 
   .post('/logout', ({ cookie: { token } }) => {
-    token.remove();
+    token.set({ value: '', httpOnly: true, secure: true, sameSite: 'none', maxAge: 0, path: '/' });
     return {
       success: true,
       message: 'Logout successful'
