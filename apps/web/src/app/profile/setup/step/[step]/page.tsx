@@ -33,7 +33,7 @@ export default function SetupStep() {
   const params = useParams();
   const step = Number(params.step);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [industries, setIndustries] = useState<any[]>([]);
   const [allTags, setAllTags] = useState<any[]>([]);
