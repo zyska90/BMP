@@ -10,27 +10,32 @@ export async function middleware(request: NextRequest) {
   const isAppRoute = pathname.startsWith('/app');
   const isAdminRoute = pathname.startsWith('/admin');
   const isProfileSetupRoute = pathname === '/profile/setup';
+  const isProtected = isAppRoute || isAdminRoute || isProfileSetupRoute;
 
-  // 1. If trying to access protected routes without a token, redirect to login
-  if ((isAppRoute || isAdminRoute || isProfileSetupRoute) && !token) {
+  // 1. No token — redirect to login
+  if (isProtected && !token) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('from', pathname);
     return NextResponse.redirect(url);
   }
 
-  // 2. If token exists, validate session and role via backend API
+  // 2. Token exists — validate with 5s timeout to handle Railway cold starts
   if (token) {
     try {
       const apiUrl = process.env.API_URL || 'http://localhost:3001';
-      const res = await fetch(`${apiUrl}/auth/me`, {
-        headers: {
-          'Cookie': `token=${token}`
-        }
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
-      if (!res.ok) {
-        // Bad/expired token, clear and redirect to login
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        headers: { Cookie: `token=${token}` },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      // Only clear cookie + redirect if API explicitly says token is bad (401/403)
+      // Do NOT logout on 500 or network errors — could be Railway cold start
+      if (res.status === 401 || res.status === 403) {
         const url = request.nextUrl.clone();
         url.pathname = '/login';
         const response = NextResponse.redirect(url);
@@ -38,40 +43,48 @@ export async function middleware(request: NextRequest) {
         return response;
       }
 
+      if (!res.ok) {
+        // API error (500, timeout, etc) — let user through, don't logout
+        return NextResponse.next();
+      }
+
       const user = await res.json();
 
-      // Check Admin Role
       if (isAdminRoute && user.role !== 'admin') {
         const url = request.nextUrl.clone();
-        url.pathname = '/app/dashboard'; // redirect standard user back to user dashboard
+        url.pathname = '/app/dashboard';
         return NextResponse.redirect(url);
       }
 
-      // Check Onboarding profile setup gate
       if (isAppRoute && !user.hasCompletedProfile) {
-        // Force redirect standard user to profile setup if incomplete
         const url = request.nextUrl.clone();
         url.pathname = '/profile/setup';
         return NextResponse.redirect(url);
       }
 
-      // If already completed profile and trying to access onboarding, redirect to dashboard
       if (isProfileSetupRoute && user.hasCompletedProfile) {
         const url = request.nextUrl.clone();
         url.pathname = '/app/dashboard';
         return NextResponse.redirect(url);
       }
 
-      // If already logged in and going to login, redirect to dashboard (or admin panel)
       if (isAuthRoute) {
         const url = request.nextUrl.clone();
         url.pathname = user.role === 'admin' ? '/admin/dashboard' : '/app/dashboard';
         return NextResponse.redirect(url);
       }
 
-    } catch (err) {
-      console.error('Middleware API call failed:', err);
-      // Fallback in case API is down, allow request but log warning
+    } catch (err: any) {
+      // Network error or timeout — Railway might be cold-starting
+      // Do NOT logout, just let the request through
+      if (err?.name === 'AbortError') {
+        console.warn('Middleware: API timeout (Railway cold start?) — allowing request');
+      } else {
+        console.error('Middleware API error:', err?.message);
+      }
+      // If trying to access protected route during API downtime, let them through
+      // Pages will handle their own auth check via proxy routes
+      return NextResponse.next();
     }
   }
 
