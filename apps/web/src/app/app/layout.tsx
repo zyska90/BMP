@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* Logo */}
         <div className="px-5 py-5 border-b border-gray-200">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-gradient-to-tr from-brand-500 to-brand-700 rounded-lg flex items-center justify-center font-display font-bold text-xs text-white">
+            <div className="w-8 h-8 bg-gradient-to-tr from-brand-500 to-brand-700 rounded-lg flex items-center justify-center font-display font-bold text-xs text-white overflow-hidden">
               BL
             </div>
             <span className="font-display font-bold text-gray-900">
@@ -49,23 +49,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         {/* User info */}
         <div className="px-5 py-4 border-b border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">Signed in as</p>
-          <p className="text-sm font-medium text-gray-900 truncate">{user.fullName || user.username}</p>
-          {user.company && (
-            <p className="text-xs text-gray-500 truncate">{user.company}</p>
-          )}
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden">
+              {user.photoUrl
+                ? <img src={user.photoUrl} alt="" className="w-full h-full object-cover" />
+                : <span>{(user.fullName || user.username)?.charAt(0)}</span>
+              }
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{user.fullName || user.username}</p>
+              {user.company && <p className="text-xs text-gray-500 truncate">{user.company}</p>}
+            </div>
+          </div>
           {/* Profile completeness bar */}
           {!user.hasCompletedProfile && (
-            <div className="mt-2.5">
+            <div className="mt-1">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-warn font-medium">Profile incomplete</span>
                 <span className="text-xs text-warn font-semibold">{user.profileCompleteness}%</span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-warn rounded-full transition-all"
-                  style={{ width: `${user.profileCompleteness}%` }}
-                />
+                <div className="h-full bg-warn rounded-full transition-all" style={{ width: `${user.profileCompleteness}%` }} />
               </div>
             </div>
           )}

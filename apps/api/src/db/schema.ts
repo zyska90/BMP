@@ -35,6 +35,7 @@ export const users = mysqlTable('users', {
   intentSeek: text('intent_seek'),
   profileCompleteness: int('profile_completeness').default(0).notNull(),
   hasCompletedProfile: boolean('has_completed_profile').default(false).notNull(),
+  photoUrl: varchar('photo_url', { length: 500 }),
   linkedinUrl: varchar('linkedin_url', { length: 255 }),
   instagramHandle: varchar('instagram_handle', { length: 100 }),
   whatsappNumber: varchar('whatsapp_number', { length: 20 }),

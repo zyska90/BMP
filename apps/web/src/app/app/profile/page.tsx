@@ -84,8 +84,11 @@ export default async function ProfilePage() {
           </div>
           <div className="px-5 py-4 space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                {profile.fullName?.charAt(0) || profile.username?.charAt(0) || '?'}
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden">
+                {profile.photoUrl
+                  ? <img src={profile.photoUrl} alt={profile.fullName} className="w-full h-full object-cover" />
+                  : <span>{profile.fullName?.charAt(0) || profile.username?.charAt(0) || '?'}</span>
+                }
               </div>
               <div>
                 <p className="font-semibold text-gray-900">{profile.fullName || <span className="text-gray-400 italic">No name set</span>}</p>

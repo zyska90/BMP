@@ -52,6 +52,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
         intentSeek: users.intentSeek,
         profileCompleteness: users.profileCompleteness,
         hasCompletedProfile: users.hasCompletedProfile,
+        photoUrl: users.photoUrl,
         linkedinUrl: users.linkedinUrl,
         instagramHandle: users.instagramHandle,
         whatsappNumber: users.whatsappNumber,
@@ -84,7 +85,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
 
     const {
       fullName, title, company, companySize, industryId, city, isOpenToRemote,
-      intentOffer, intentSeek, linkedinUrl, instagramHandle, whatsappNumber, websiteUrl,
+      intentOffer, intentSeek, photoUrl, linkedinUrl, instagramHandle, whatsappNumber, websiteUrl,
       tagIds
     } = body as any;
 
@@ -110,6 +111,7 @@ export const userRoutes = new Elysia({ prefix: '/users' })
       isOpenToRemote: isOpenToRemote ?? false,
       intentOffer: intentOffer || null,
       intentSeek: intentSeek || null,
+      photoUrl: photoUrl || null,
       linkedinUrl: linkedinUrl || null,
       instagramHandle: instagramHandle || null,
       whatsappNumber: whatsappNumber || null,

@@ -1,7 +1,8 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../db';
-import { registrations, users, expertiseTags } from '../db/schema';
-import { eq, desc, asc } from 'drizzle-orm';
+import { registrations, users, expertiseTags, userTags, matchScores, meetingRequests, industryAdjacency } from '../db/schema';
+import { eq, desc, asc, count, and, gte, sql } from 'drizzle-orm';
+import { intentScoreCalc, jaccardCalc, industryCalc, scaleCalc, geoCalc, buildReasonText } from '../services/matching';
 import bcrypt from 'bcryptjs';
 import { requireAdmin } from '../middleware/jwt';
 import { sendEmail, getCredentialEmailTemplate } from '../services/email';
@@ -37,7 +38,41 @@ async function generateUniqueUsername(fullName: string): Promise<string> {
 
 export const adminRoutes = new Elysia({ prefix: '/admin' })
   .use(requireAdmin)
-  
+
+  // Platform stats for admin dashboard
+  .get('/stats', async () => {
+    const [
+      [{ activeUsers }],
+      [{ inactiveUsers }],
+      [{ completedProfiles }],
+      [{ totalMatches }],
+      [{ pendingMeetings }],
+      [{ confirmedMeetings }],
+      [{ pendingRegs }],
+      [{ approvedRegs }],
+    ] = await Promise.all([
+      db.select({ activeUsers: count() }).from(users).where(and(eq(users.accountStatus, 'active'), eq(users.role, 'user'))),
+      db.select({ inactiveUsers: count() }).from(users).where(eq(users.accountStatus, 'inactive')),
+      db.select({ completedProfiles: count() }).from(users).where(and(eq(users.hasCompletedProfile, true), eq(users.role, 'user'))),
+      db.select({ totalMatches: count() }).from(matchScores),
+      db.select({ pendingMeetings: count() }).from(meetingRequests).where(eq(meetingRequests.status, 'pending')),
+      db.select({ confirmedMeetings: count() }).from(meetingRequests).where(eq(meetingRequests.status, 'accepted')),
+      db.select({ pendingRegs: count() }).from(registrations).where(eq(registrations.status, 'pending')),
+      db.select({ approvedRegs: count() }).from(registrations).where(eq(registrations.status, 'approved')),
+    ]);
+
+    return {
+      activeUsers,
+      inactiveUsers,
+      completedProfiles,
+      totalMatchPairs: Math.floor(totalMatches / 2), // bidirectional so divide by 2
+      pendingMeetings,
+      confirmedMeetings,
+      pendingRegistrations: pendingRegs,
+      approvedRegistrations: approvedRegs,
+    };
+  })
+
   // Get all Tally registrations
   .get('/registrations', async () => {
     return await db
@@ -158,10 +193,119 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
     };
   })
 
+  // Global recompute — compute all pairs for all active users
+  .post('/matches/recompute-all', async ({ set }) => {
+    const allUsers = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.accountStatus, 'active'), eq(users.hasCompletedProfile, true), eq(users.role, 'user')));
+
+    if (allUsers.length < 2) return { success: true, computed: 0 };
+
+    const allTags = await db.select().from(userTags);
+    const tagsByUser = new Map<number, number[]>();
+    for (const t of allTags) {
+      if (!tagsByUser.has(t.userId)) tagsByUser.set(t.userId, []);
+      tagsByUser.get(t.userId)!.push(t.tagId);
+    }
+
+    const adjacencies = await db.select().from(industryAdjacency);
+    const adjacencyMap = new Map<string, number>();
+    for (const a of adjacencies) {
+      adjacencyMap.set(`${a.industryAId}-${a.industryBId}`, a.weight);
+    }
+
+    let computed = 0;
+    for (let i = 0; i < allUsers.length; i++) {
+      for (let j = i + 1; j < allUsers.length; j++) {
+        const a = allUsers[i];
+        const b = allUsers[j];
+        const tagsA = tagsByUser.get(a.id) || [];
+        const tagsB = tagsByUser.get(b.id) || [];
+
+        const s = {
+          intent: intentScoreCalc(a.intentOffer, a.intentSeek, b.intentOffer, b.intentSeek),
+          expertise: jaccardCalc(tagsA, tagsB),
+          industry: industryCalc(a.industryId ?? null, b.industryId ?? null, adjacencyMap),
+          scale: scaleCalc(a.companySize ?? null, b.companySize ?? null),
+          geo: geoCalc(a.city ?? null, b.city ?? null, a.isOpenToRemote, b.isOpenToRemote),
+        };
+        const total = s.intent + s.expertise + s.industry + s.scale + s.geo;
+        const reason = buildReasonText(s);
+
+        await db.insert(matchScores).values({ userAId: a.id, userBId: b.id, totalScore: total, intentScore: s.intent, expertiseScore: s.expertise, industryScore: s.industry, scaleScore: s.scale, geoScore: s.geo, matchReasonSummary: reason })
+          .onDuplicateKeyUpdate({ set: { totalScore: total, intentScore: s.intent, expertiseScore: s.expertise, industryScore: s.industry, scaleScore: s.scale, geoScore: s.geo, matchReasonSummary: reason, computedAt: sql`NOW()` } });
+
+        await db.insert(matchScores).values({ userAId: b.id, userBId: a.id, totalScore: total, intentScore: s.intent, expertiseScore: s.expertise, industryScore: s.industry, scaleScore: s.scale, geoScore: s.geo, matchReasonSummary: reason })
+          .onDuplicateKeyUpdate({ set: { totalScore: total, intentScore: s.intent, expertiseScore: s.expertise, industryScore: s.industry, scaleScore: s.scale, geoScore: s.geo, matchReasonSummary: reason, computedAt: sql`NOW()` } });
+
+        computed++;
+      }
+    }
+    return { success: true, computed, totalPairs: computed };
+  })
+
+  // All computed match pairs (deduplicated A < B)
+  .get('/matches', async () => {
+    const rows = await db
+      .select({
+        userAId: matchScores.userAId,
+        userBId: matchScores.userBId,
+        totalScore: matchScores.totalScore,
+        intentScore: matchScores.intentScore,
+        expertiseScore: matchScores.expertiseScore,
+        industryScore: matchScores.industryScore,
+        scaleScore: matchScores.scaleScore,
+        geoScore: matchScores.geoScore,
+        reason: matchScores.matchReasonSummary,
+        computedAt: matchScores.computedAt,
+      })
+      .from(matchScores)
+      .where(sql`user_a_id < user_b_id`) // deduplicate
+      .orderBy(desc(matchScores.totalScore));
+
+    // Fetch user names
+    const allUsers = await db.select({ id: users.id, fullName: users.fullName, company: users.company, photoUrl: users.photoUrl }).from(users);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    return rows.map(r => ({
+      ...r,
+      userA: userMap.get(r.userAId),
+      userB: userMap.get(r.userBId),
+    }));
+  })
+
+  // All meetings (admin view)
+  .get('/meetings', async () => {
+    const rows = await db
+      .select({
+        id: meetingRequests.id,
+        status: meetingRequests.status,
+        channel: meetingRequests.channel,
+        proposedTime: meetingRequests.proposedTime,
+        introNote: meetingRequests.introNote,
+        createdAt: meetingRequests.createdAt,
+        updatedAt: meetingRequests.updatedAt,
+        requesterId: meetingRequests.requesterId,
+        recipientId: meetingRequests.recipientId,
+      })
+      .from(meetingRequests)
+      .orderBy(desc(meetingRequests.createdAt));
+
+    const allUsers = await db.select({ id: users.id, fullName: users.fullName, company: users.company, photoUrl: users.photoUrl }).from(users);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    return rows.map(r => ({
+      ...r,
+      requester: userMap.get(r.requesterId),
+      recipient: userMap.get(r.recipientId),
+    }));
+  })
+
   // --- User Management ---
 
   .get('/users', async () => {
-    return await db
+    const allUsers = await db
       .select({
         id: users.id,
         username: users.username,
@@ -169,14 +313,104 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         fullName: users.fullName,
         title: users.title,
         company: users.company,
+        city: users.city,
+        photoUrl: users.photoUrl,
         role: users.role,
         accountStatus: users.accountStatus,
         profileCompleteness: users.profileCompleteness,
         hasCompletedProfile: users.hasCompletedProfile,
+        intentOffer: users.intentOffer,
+        intentSeek: users.intentSeek,
+        industryId: users.industryId,
+        companySize: users.companySize,
+        whatsappNumber: users.whatsappNumber,
+        linkedinUrl: users.linkedinUrl,
+        isOpenToRemote: users.isOpenToRemote,
         createdAt: users.createdAt
       })
       .from(users)
       .orderBy(desc(users.createdAt));
+
+    // Get meeting counts per user
+    const meetingCounts = await db
+      .select({ userId: meetingRequests.requesterId, cnt: count() })
+      .from(meetingRequests)
+      .groupBy(meetingRequests.requesterId);
+
+    const meetingReceivedCounts = await db
+      .select({ userId: meetingRequests.recipientId, cnt: count() })
+      .from(meetingRequests)
+      .groupBy(meetingRequests.recipientId);
+
+    // Get match counts per user (above min score 50)
+    const matchCounts = await db
+      .select({ userId: matchScores.userAId, cnt: count() })
+      .from(matchScores)
+      .where(gte(matchScores.totalScore, 50))
+      .groupBy(matchScores.userAId);
+
+    const meetingSentMap = new Map(meetingCounts.map(r => [r.userId, Number(r.cnt)]));
+    const meetingReceivedMap = new Map(meetingReceivedCounts.map(r => [r.userId, Number(r.cnt)]));
+    const matchMap = new Map(matchCounts.map(r => [r.userId, Number(r.cnt)]));
+
+    return allUsers.map(u => ({
+      ...u,
+      meetingsSentCount: meetingSentMap.get(u.id) || 0,
+      meetingsReceivedCount: meetingReceivedMap.get(u.id) || 0,
+      matchCount: matchMap.get(u.id) || 0,
+    }));
+  })
+
+  .get('/users/:id', async ({ params: { id }, set }) => {
+    const userId = parseInt(id);
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) { set.status = 404; return { error: 'User not found' }; }
+
+    // Expertise tags
+    const tags = await db
+      .select({ id: expertiseTags.id, name: expertiseTags.name, category: expertiseTags.category })
+      .from(userTags)
+      .innerJoin(expertiseTags, eq(userTags.tagId, expertiseTags.id))
+      .where(eq(userTags.userId, userId));
+
+    // Meetings (sent + received)
+    const meetingsSent = await db
+      .select({ id: meetingRequests.id, status: meetingRequests.status, channel: meetingRequests.channel, proposedTime: meetingRequests.proposedTime, createdAt: meetingRequests.createdAt, otherName: users.fullName })
+      .from(meetingRequests)
+      .innerJoin(users, eq(meetingRequests.recipientId, users.id))
+      .where(eq(meetingRequests.requesterId, userId))
+      .orderBy(desc(meetingRequests.createdAt));
+
+    const meetingsReceived = await db
+      .select({ id: meetingRequests.id, status: meetingRequests.status, channel: meetingRequests.channel, proposedTime: meetingRequests.proposedTime, createdAt: meetingRequests.createdAt, otherName: users.fullName })
+      .from(meetingRequests)
+      .innerJoin(users, eq(meetingRequests.requesterId, users.id))
+      .where(eq(meetingRequests.recipientId, userId))
+      .orderBy(desc(meetingRequests.createdAt));
+
+    // Top matches
+    const matches = await db
+      .select({ score: matchScores.totalScore, fullName: users.fullName, company: users.company })
+      .from(matchScores)
+      .innerJoin(users, eq(matchScores.userBId, users.id))
+      .where(eq(matchScores.userAId, userId))
+      .orderBy(desc(matchScores.totalScore))
+      .limit(5);
+
+    return {
+      ...user,
+      expertiseTags: tags,
+      meetingsSent,
+      meetingsReceived,
+      topMatches: matches,
+      activity: {
+        totalMeetingsSent: meetingsSent.length,
+        totalMeetingsReceived: meetingsReceived.length,
+        meetingsConfirmed: [...meetingsSent, ...meetingsReceived].filter(m => m.status === 'accepted').length,
+        memberSince: user.createdAt,
+      }
+    };
   })
 
   .patch('/users/:id/status', async ({ params: { id }, body, set }) => {

@@ -94,6 +94,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
       title: dbUser.title,
       company: dbUser.company,
       city: dbUser.city,
+      photoUrl: dbUser.photoUrl,
       profileCompleteness: dbUser.profileCompleteness,
       hasCompletedProfile: dbUser.hasCompletedProfile,
       createdAt: dbUser.createdAt

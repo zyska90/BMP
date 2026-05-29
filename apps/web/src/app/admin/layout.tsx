@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { LayoutDashboard, ClipboardList, Users, Tag, LogOut } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Users, Tag, LogOut, TrendingUp, Calendar } from 'lucide-react';
 
 async function getMe() {
   const cookieStore = cookies();
@@ -23,6 +23,8 @@ const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/registrations', label: 'Registrations', icon: ClipboardList },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/matches', label: 'Match Pairs', icon: TrendingUp },
+  { href: '/admin/meetings', label: 'Meetings', icon: Calendar },
   { href: '/admin/tags', label: 'Tags & Industries', icon: Tag },
 ];
 

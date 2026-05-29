@@ -3,79 +3,9 @@ import { db } from '../db';
 import { users, userTags, matchScores, industryAdjacency } from '../db/schema';
 import { eq, ne, and, desc, gte, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/jwt';
+import { intentScoreCalc, jaccardCalc, industryCalc, scaleCalc, geoCalc, buildReasonText } from '../services/matching';
 
 const MIN_MATCH_SCORE = 60;
-
-// --- Scoring helpers ---
-
-function intentScore(offerA: string | null, seekA: string | null, offerB: string | null, seekB: string | null): number {
-  if (!offerA || !seekA || !offerB || !seekB) return 0;
-  const a = (offerA + ' ' + seekA).toLowerCase();
-  const b = (offerB + ' ' + seekB).toLowerCase();
-
-  // Check complementarity: does A's offer match B's seek, and B's offer match A's seek?
-  const aOfferWords = (offerA || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const bSeekWords = (seekB || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const bOfferWords = (offerB || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const aSeekWords = (seekA || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
-
-  const matchAtoB = aOfferWords.filter(w => bSeekWords.some(bw => bw.includes(w) || w.includes(bw))).length;
-  const matchBtoA = bOfferWords.filter(w => aSeekWords.some(aw => aw.includes(w) || w.includes(aw))).length;
-
-  const totalWords = Math.max(aOfferWords.length + bOfferWords.length, 1);
-  const ratio = (matchAtoB + matchBtoA) / totalWords;
-
-  // Scale to 0-30 points
-  return Math.min(30, Math.round(ratio * 60));
-}
-
-function jaccardTagScore(tagsA: number[], tagsB: number[]): number {
-  if (tagsA.length === 0 || tagsB.length === 0) return 0;
-  const setA = new Set(tagsA);
-  const setB = new Set(tagsB);
-  const intersection = [...setA].filter(t => setB.has(t)).length;
-  const union = new Set([...setA, ...setB]).size;
-  // Scale to 0-25 points
-  return Math.min(25, Math.round((intersection / union) * 25));
-}
-
-function industryScore(indA: number | null, indB: number | null, adjacencyMap: Map<string, number>): number {
-  if (!indA || !indB) return 0;
-  if (indA === indB) return 20; // same industry = full score
-  const weight = adjacencyMap.get(`${indA}-${indB}`) || adjacencyMap.get(`${indB}-${indA}`) || 0;
-  // weight 0-5 → scale to 0-15 points
-  return Math.round((weight / 5) * 15);
-}
-
-function scaleScore(sizeA: string | null, sizeB: string | null): number {
-  if (!sizeA || !sizeB) return 5; // neutral if unknown
-  const ORDER = ['Solo', '2-10', '11-50', '51-200', '200+'];
-  const iA = ORDER.indexOf(sizeA);
-  const iB = ORDER.indexOf(sizeB);
-  if (iA === -1 || iB === -1) return 5;
-  const diff = Math.abs(iA - iB);
-  // Same size = 15, adjacent = 10, 2 apart = 5, 3+ = 0
-  return diff === 0 ? 15 : diff === 1 ? 10 : diff === 2 ? 5 : 0;
-}
-
-function geoScore(cityA: string | null, cityB: string | null, remoteA: boolean, remoteB: boolean): number {
-  if (remoteA || remoteB) return 10; // either open to remote = full geo score
-  if (!cityA || !cityB) return 5;
-  return cityA.toLowerCase().trim() === cityB.toLowerCase().trim() ? 10 : 0;
-}
-
-function buildReason(scores: { intent: number; expertise: number; industry: number; scale: number; geo: number }, industryName?: string): string {
-  const parts: string[] = [];
-  if (scores.intent >= 15) parts.push('strong intent match');
-  else if (scores.intent >= 8) parts.push('partial intent overlap');
-  if (scores.expertise >= 15) parts.push('high expertise alignment');
-  else if (scores.expertise >= 8) parts.push('some shared expertise');
-  if (scores.industry >= 15) parts.push(`same industry${industryName ? ` (${industryName})` : ''}`);
-  else if (scores.industry >= 8) parts.push('adjacent industries');
-  if (scores.scale >= 10) parts.push('similar company scale');
-  if (scores.geo >= 10) parts.push('same location or remote-friendly');
-  return parts.length > 0 ? parts.join(', ') : 'general business compatibility';
-}
 
 // --- Routes ---
 
@@ -98,14 +28,15 @@ export const matchRoutes = new Elysia({ prefix: '/matches' })
     const myTags = await db.select({ tagId: userTags.tagId }).from(userTags).where(eq(userTags.userId, userId));
     const myTagIds = myTags.map(t => t.tagId);
 
-    // Load all active users with completed profiles (excluding self)
+    // Load all active non-admin users with completed profiles (excluding self)
     const candidates = await db
       .select()
       .from(users)
       .where(and(
         ne(users.id, userId),
         eq(users.accountStatus, 'active'),
-        eq(users.hasCompletedProfile, true)
+        eq(users.hasCompletedProfile, true),
+        eq(users.role, 'user')
       ));
 
     if (candidates.length === 0) return { success: true, computed: 0 };
@@ -132,15 +63,15 @@ export const matchRoutes = new Elysia({ prefix: '/matches' })
       const candidateTags = tagsByUser.get(candidate.id) || [];
 
       const s = {
-        intent: intentScore(me.intentOffer, me.intentSeek, candidate.intentOffer, candidate.intentSeek),
-        expertise: jaccardTagScore(myTagIds, candidateTags),
-        industry: industryScore(me.industryId, candidate.industryId, adjacencyMap),
-        scale: scaleScore(me.companySize, candidate.companySize),
-        geo: geoScore(me.city, candidate.city, me.isOpenToRemote, candidate.isOpenToRemote),
+        intent: intentScoreCalc(me.intentOffer, me.intentSeek, candidate.intentOffer, candidate.intentSeek),
+        expertise: jaccardCalc(myTagIds, candidateTags),
+        industry: industryCalc(me.industryId, candidate.industryId, adjacencyMap),
+        scale: scaleCalc(me.companySize, candidate.companySize),
+        geo: geoCalc(me.city, candidate.city, me.isOpenToRemote, candidate.isOpenToRemote),
       };
 
       const total = s.intent + s.expertise + s.industry + s.scale + s.geo;
-      const reason = buildReason(s);
+      const reason = buildReasonText(s);
 
       // Upsert both directions
       await db.insert(matchScores).values({
