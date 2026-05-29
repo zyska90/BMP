@@ -49,14 +49,12 @@ export default function Home() {
           >
             Access Platform
           </Link>
-          <a
-            href="https://tally.so"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/register"
             className="px-8 py-3.5 bg-gray-900 border border-gray-800 hover:bg-gray-800 text-gray-200 font-semibold rounded-md transition-all duration-150"
           >
             Request Invite
-          </a>
+          </Link>
         </div>
 
         {/* Feature grid preview */}
