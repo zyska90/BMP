@@ -1,23 +1,10 @@
-import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { LayoutDashboard, Users, Calendar, User, LogOut } from 'lucide-react';
+import { getAuthUser } from '../../lib/server-api';
 
 async function getMe() {
-  const cookieStore = cookies();
-  const token = cookieStore.get('token')?.value;
-  if (!token) return null;
-
-  try {
-    const res = await fetch(`${process.env.API_URL}/auth/me`, {
-      headers: { Cookie: `token=${token}` },
-      cache: 'no-store'
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
+  return getAuthUser();
 }
 
 const navItems = [
@@ -30,6 +17,7 @@ const navItems = [
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getMe();
   if (!user) redirect('/login');
+  if ((user as any)?._apiError) redirect('/app/dashboard'); // Railway cold start, retry
 
   return (
     <div className="flex min-h-screen bg-gray-50">
